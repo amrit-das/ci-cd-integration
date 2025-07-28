@@ -1,0 +1,41 @@
+# CODEOWNERS file for Dataiku CI/CD project
+# This file defines who must review changes to specific files/directories
+
+# Global owners - Admin support team has oversight
+* @your-org/admin-support
+
+# Workflow files - Only MLOps team can modify CI/CD
+/.github/workflows/ @your-org/mlops
+/.github/CODEOWNERS @your-org/mlops
+
+# Configuration files - MLOps team oversight
+pyproject.toml @your-org/mlops
+requirements*.txt @your-org/mlops
+.pre-commit-config.yaml @your-org/mlops
+
+# Dataiku-specific files - MLOps team required
+/recipes/ @your-org/mlops
+/datasets/ @your-org/mlops
+/lib/ @your-org/mlops
+params.json @your-org/mlops
+
+# Documentation - Can be reviewed by developers or triage team
+*.md @your-org/developers @your-org/triage
+/docs/ @your-org/developers @your-org/triage
+
+# Test files - Developers can review
+/tests/ @your-org/developers
+
+# Environment-specific overrides
+# Production-related files always need MLOps approval
+*prod* @your-org/mlops
+*production* @your-org/mlops
+
+# Security-sensitive files
+*.key @your-org/mlops @your-org/admin-support
+*.pem @your-org/mlops @your-org/admin-support
+*.env* @your-org/mlops
+
+# Database migration scripts
+/migrations/ @your-org/mlops
+*migration* @your-org/mlops 

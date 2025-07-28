@@ -1,0 +1,157 @@
+name: Dev Branch CI - Linting and Quality Checks
+
+on:
+  push:
+    branches: [ dev ]
+  pull_request:
+    branches: [ dev ]
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+
+jobs:
+  lint-and-format:
+    runs-on: ubuntu-latest
+    name: Lint with Ruff
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install ruff pre-commit
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
+
+    - name: Run Ruff Linter
+      run: |
+        echo "Running Ruff linter..."
+        ruff check . --output-format=github
+      continue-on-error: false
+
+    - name: Run Ruff Formatter Check
+      run: |
+        echo "Checking code formatting with Ruff..."
+        ruff format --check .
+      continue-on-error: false
+
+    - name: Validate Dataiku Project Structure
+      run: |
+        echo "Validating Dataiku project structure..."
+        # Check for required Dataiku files and folders
+        if [ ! -f "params.json" ] && [ ! -d "datasets" ] && [ ! -d "recipes" ]; then
+          echo "Warning: This doesn't appear to be a Dataiku project. Expected params.json, datasets/, or recipes/ directories."
+        fi
+        
+        # Check for common Dataiku patterns
+        find . -name "*.py" -path "*/recipes/*" | head -5 | while read file; do
+          echo "Found recipe: $file"
+        done
+        
+        find . -name "*.json" -path "*/datasets/*" | head -5 | while read file; do
+          echo "Found dataset config: $file"
+        done
+
+    - name: Security Scan
+      run: |
+        echo "Running basic security checks..."
+        # Check for hardcoded secrets (basic patterns)
+        if grep -r -i "password\|secret\|key\|token" --include="*.py" --include="*.json" --exclude-dir=".git" . | grep -v "# pragma: allowlist secret"; then
+          echo "⚠️  Potential hardcoded secrets found. Please review and add '# pragma: allowlist secret' if intentional."
+          exit 1
+        fi
+        echo "✅ No obvious hardcoded secrets found"
+
+  validate-team-permissions:
+    runs-on: ubuntu-latest
+    name: Validate Team Permissions
+    if: github.event_name == 'pull_request'
+    
+    steps:
+    - name: Check if user is in developers team
+      run: |
+        echo "PR Author: ${{ github.actor }}"
+        echo "This step would validate that the PR author is part of the developers team"
+        echo "Note: Actual team validation requires GitHub API and proper token setup"
+        
+        # In a real implementation, you would:
+        # 1. Use GitHub API to check team membership
+        # 2. Validate that the PR is from a feature branch created from dev
+        # 3. Ensure proper branch naming conventions
+        
+        if [[ "${{ github.head_ref }}" == "main" ]] || [[ "${{ github.head_ref }}" == "preprod" ]] || [[ "${{ github.head_ref }}" == "prod" ]]; then
+          echo "❌ Cannot create PR from protected branches (main, preprod, prod)"
+          exit 1
+        fi
+        
+        echo "✅ Branch validation passed"
+
+  dataiku-specific-checks:
+    runs-on: ubuntu-latest
+    name: Dataiku-Specific Validations
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Validate Dataiku Recipes
+      run: |
+        echo "Validating Dataiku recipes..."
+        
+        # Check Python recipes for common issues
+        find . -name "*.py" -path "*/recipes/*" | while read recipe; do
+          echo "Checking recipe: $recipe"
+          
+          # Check for required imports
+          if grep -q "import dataiku" "$recipe"; then
+            echo "✅ Recipe imports dataiku: $recipe"
+          else
+            echo "⚠️  Recipe missing 'import dataiku': $recipe"
+          fi
+          
+          # Check for proper error handling
+          if grep -q "try:" "$recipe" && grep -q "except:" "$recipe"; then
+            echo "✅ Recipe has error handling: $recipe"
+          else
+            echo "⚠️  Recipe missing error handling: $recipe"
+          fi
+        done
+
+    - name: Validate Dataset Configurations
+      run: |
+        echo "Validating dataset configurations..."
+        
+        find . -name "dataset.json" | while read dataset_config; do
+          echo "Checking dataset config: $dataset_config"
+          
+          # Basic JSON validation
+          if python -m json.tool "$dataset_config" > /dev/null 2>&1; then
+            echo "✅ Valid JSON: $dataset_config"
+          else
+            echo "❌ Invalid JSON: $dataset_config"
+            exit 1
+          fi
+        done
+
+    - name: Check for Environment-Specific Configurations
+      run: |
+        echo "Checking for environment-specific configurations..."
+        
+        # Ensure no hardcoded environment references in dev
+        if grep -r "prod\|production" --include="*.py" --include="*.json" --exclude-dir=".git" .; then
+          echo "⚠️  Found references to production environment in dev branch"
+        fi
+        
+        echo "✅ Environment configuration check completed" 
